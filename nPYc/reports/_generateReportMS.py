@@ -580,25 +580,29 @@ def _featureReport(dataset, destinationPath=None):
                 figureSize=dataset.Attributes['figureSize'])
 
         # Figure 3: Acquisition structure and detector voltage
-        if destinationPath:
-            item['AcquisitionStructureFigure'] = os.path.join(graphicsPath,
-                                                              item['Name'] + '_acquisitionStructure.' + dataset.Attributes[
-                                                                  'figureFormat'])
-            saveAs = item['AcquisitionStructureFigure']
-        else:
-            print('Figure 3: Acquisition structure (coloured by detector voltage).')
+        if 'Detector' in dataset.sampleMetadata.columns:
+            if destinationPath:
+                item['AcquisitionStructureFigure'] = os.path.join(graphicsPath,
+                                                                  item['Name'] + '_acquisitionStructure.' + dataset.Attributes[
+                                                                      'figureFormat'])
+                saveAs = item['AcquisitionStructureFigure']
+            else:
+                print('Figure 3: Acquisition structure (coloured by detector voltage).')
 
-        # TIC all samples
-        plotTIC(dataset,
-                addViolin=False,
-                addBatchShading=True,
-                addLineAtGaps=True,
-                colourByDetectorVoltage=True,
-                savePath=saveAs,
-                title='',
-                figureFormat=dataset.Attributes['figureFormat'],
-                dpi=dataset.Attributes['dpi'],
-                figureSize=dataset.Attributes['figureSize'])
+            # TIC all samples
+            plotTIC(dataset,
+                    addViolin=False,
+                    addBatchShading=True,
+                    addLineAtGaps=True,
+                    colourByDetectorVoltage=True,
+                    savePath=saveAs,
+                    title='',
+                    figureFormat=dataset.Attributes['figureFormat'],
+                    dpi=dataset.Attributes['dpi'],
+                    figureSize=dataset.Attributes['figureSize'])
+        else:
+            print('Figure 3: No detector voltage information to plot.')
+            
     else:
 
         if not destinationPath:

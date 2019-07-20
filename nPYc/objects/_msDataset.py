@@ -493,6 +493,7 @@ class MSDataset(Dataset):
 		* **'NPC LIMS'** NPC LIMS files mapping files names of raw analytical data to sample IDs
 		* **'NPC Subject Info'** Map subject metadata from a NPC sample manifest file (format defined in 'PCSOP.082')
 		* **'Raw Data'** Extract analytical parameters from raw data files
+		* **'.mzML'** Extract acquisition from mzML files
 		* **'ISATAB'** ISATAB study designs
 		* **'Filenames'** Parses sample information out of the filenames, based on the named capture groups in the regex passed in *filenamespec*
 		* **'Basic CSV'** Joins the :py:attr:`sampleMetadata` table with the data in the ``csv`` file at *filePath=*, matching on the 'Sample File Name' column in both.
@@ -509,6 +510,8 @@ class MSDataset(Dataset):
 			if filenameSpec is None: # Use spec from SOP
 				filenameSpec = self.Attributes['filenameSpec']
 			self._getSampleMetadataFromFilename(filenameSpec)
+		elif descriptionFormat == '.mzML':
+			self._getSampleMetadataFromRawData()
 		elif descriptionFormat == 'Batches':
 			self._fillBatches()
 		else:
@@ -922,6 +925,59 @@ class MSDataset(Dataset):
 			print('\n****** Please check and correct before continuing - these samples will be automatically marked for exclusion from subsequent processing ******\n')
 
 
+	def _getSampleMetadataFrommzML(self, mzMLPath):
+		"""
+		Pull metadata out of mzML experiment files.
+		"""
+		# Validate inputs
+		if not os.path.isdir(mzMLPath):
+			raise ValueError('No directory found at %s' % (mzMLPath))
+
+		# Store the location
+		self.Attributes['Raw Data Path'] = mzMLPath
+
+		# Infer data format here - for now assume Waters RAW.
+		#instrumentParams = ge(mzMLPath)
+
+		instrumentParams = extractParams(mzMLPath, '.mzML')
+
+		# Merge back into sampleMetadata
+		# Check if we already have these columns in sampleMetadata, if not, merge, if so, use combine_first to patch
+		if not 'Acquired Time' in self.sampleMetadata.columns:
+			self.sampleMetadata = pandas.merge(self.sampleMetadata, instrumentParams, left_on='Sample File Name', right_on='Sample File Name', how='left', sort=False)
+			self.Attributes['Log'].append([datetime.now(), 'Acquisition metadata added from raw data at: %s' % (mzMLPath)])
+
+		else:
+			# Delete the items not currenty in self.sampleMetadata
+			instrumentParams = instrumentParams[instrumentParams['Sample File Name'].isin(self.sampleMetadata['Sample File Name'])]
+			# Create an empty template
+			sampleMetadata = pandas.DataFrame(self.sampleMetadata['Sample File Name'], columns=['Sample File Name'])
+
+			instrumentParams = pandas.merge(sampleMetadata, instrumentParams, left_on='Sample File Name', right_on='Sample File Name', how='left', sort=False)
+			self.sampleMetadata = self.sampleMetadata.combine_first(instrumentParams)
+			self.Attributes['Log'].append([datetime.now(), 'Additional acquisition metadata added from raw data at: %s' % (mzMLPath)])
+
+		# Generate the integer run order.
+		# Explicity convert datetime format
+		self.sampleMetadata['Acquired Time'] = self.sampleMetadata['Acquired Time'].dt.to_pydatetime()
+		self.sampleMetadata['Order'] = self.sampleMetadata.sort_values(by='Acquired Time').index
+		self.sampleMetadata['Run Order'] = self.sampleMetadata.sort_values(by='Order').index
+		self.sampleMetadata.drop('Order', axis=1, inplace=True)
+
+		# Flag samples for exclusion:
+		if 'Exclusion Details' not in self.sampleMetadata:
+			self.sampleMetadata['Exclusion Details'] = None
+
+		# Flag samples with missing instrument parameters
+		startTimeStampNull = self.sampleMetadata.loc[self.sampleMetadata['Acquired Time'].isnull(), 'Sample File Name'].values
+
+		if(startTimeStampNull.shape[0] != 0):
+			print('\n\"startTimeStamp\" missing for:')
+			for i in startTimeStampNull:
+				print(i)
+			self.excludeSamples(startTimeStampNull, message='startTimeStamp not found in .mzML')
+
+
 	def _getSampleMetadataFromFilename(self, filenameSpec):
 		"""
 		Infer sample acquisition metadata from standardised filename template.
@@ -1018,8 +1074,36 @@ class MSDataset(Dataset):
 		self.sampleMetadata['Metadata Available'] = True
 		self.Attributes['Log'].append([datetime.now(), 'Sample metadata parsed from filenames.'])
 
-
 	def _fillBatches(self):
+		"""
+		Use acquisition times to infer batch info
+		"""
+
+		# We canot infer batches unless we have run
+		if 'Acquired Date' not in self.sampleMetadata.columns:
+			warnings.warn('Unable to infer batches without Acquired Date, skipping.')
+		elif 'Acquired Time' not in self.sampleMetadata.columns:
+			warnings.warn('Unable to infer batches without Acquired Time, skipping.')
+
+		elif 'Run Order' not in self.sampleMetadata.columns:
+			warnings.warn('Unable to infer batches without Acquired Time, skipping.')
+
+		elif self.sampleMetadata['Run Order'].isnull().all():
+			warnings.warn('Unable to infer batches without run order, skipping.')
+		else:
+			currentBatch = 0
+			# Loop over samples in run order
+
+			acquiredDates = self.sampleMetadata.sort_values(by='Run Order')['Acquired Date']
+
+			# Don't include the dilution series or blanks
+			if not ((row['AssayRole'] == AssayRole.LinearityReference) or (row['SampleType'] == SampleType.ProceduralBlank)):
+				self.sampleMetadata.loc[index, 'Batch'] = currentBatch
+				self.sampleMetadata.loc[index, 'Correction Batch'] = currentBatch
+				contiguousDilution = False
+
+
+	def _fillBatchesNPC(self):
 		"""
 		Use sample names and acquisition times to infer batch info
 		"""
