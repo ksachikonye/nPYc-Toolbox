@@ -14,7 +14,7 @@ from ._conditionalJoin import *
 
 def extractParams(filepath, filetype, pdata=1):
 	"""
-	Extract analytical parameters from raw data files for Bruker and Waters .RAW data only.
+	Extract analytical parameters from raw data files for Bruker, Waters .RAW data and .mzML only.
 
 	:param filepath: Look for data in all the directories under this location.
 	:type searchDirectory: string
@@ -55,6 +55,13 @@ def extractParams(filepath, filetype, pdata=1):
 		pattern = re.compile(pattern)
 		fileList = buildFileList(filepath, pattern)
 
+	elif filetype == '.mzML':
+		pattern = '.+?\.mzML$'
+		queryItems = ['startTimeStamp']
+		pattern = re.compile(pattern)
+		fileList = buildFileList(filepath, pattern)
+
+
 	# iterate over the list
 	results = list()
 	for filename in fileList:
@@ -62,6 +69,8 @@ def extractParams(filepath, filetype, pdata=1):
 			results.append(extractBrukerparams(filename, queryItems, acqTimeRE))
 		elif filetype == 'Waters .raw':
 			results.append(extractWatersRAWParams(filename, queryItems))
+		elif filetype == '.mzML':
+			results.append(extractmzMLParams(filename, queryItems))
 
 	resultsDF = pandas.DataFrame(results)
 	resultsDF = resultsDF.apply(lambda x: pandas.to_numeric(x, errors='ignore'))
@@ -156,6 +165,59 @@ def extractWatersRAWParams(filePath, queryItems):
 
 	return results
 
+
+def extractmzMLParams(filePath, queryItems):
+	"""
+	Read parameters defined in *queryItems* for Waters .RAW data.
+
+	:param filePath: Path to mzML file
+	:type filePath: str
+	:param dict queryItems: names of parameters to extract values for
+	:returns: Dictionary of extracted parameters
+	:rtype: dict
+	"""
+
+	# Get filename
+	filename = os.path.basename(filePath)
+	results = dict()
+	results['Warnings'] = ''
+
+	results['File Path'] = filePath
+	results['Sample File Name'] = filename[:-4]
+
+	try:
+		xml_file = ET.parse(filePath)
+
+		root_node = xml_file.getroot()
+
+		logging.debug('Searching file: ' + filePath)
+		# Loop over the search terms
+		for currentTag in queryItems:
+
+			tagValue = None
+			for child in root_node.iter():
+				if child.get(currentTag) is None:
+					pass
+				else:
+					tagValue = child.get(currentTag)
+					results[currentTag] = tagValue
+
+			logging.debug('Looking for: ' + currentTag)
+
+			if tagValue is not None:
+				logging.debug('Found Tag: ' + currentTag + ' with value: ' + tagValue)
+			else:
+				results['Warnings'] = conditionalJoin(results['Warnings'],
+			    									   'Parameter ' + currentTag + ' not found.')
+				warnings.warn('Parameter ' + currentTag + ' not found in file: ' + os.path.join(currentTag))
+
+	except IOError:
+		for currentTag in queryItems:
+			results['Warnings'] = conditionalJoin(results['Warnings'],
+												  'Unable to open ' + filePath + ' for reading.')
+			warnings.warn('Unable to open ' + filePath + ' for reading.')
+
+	return results
 
 
 def extractBrukerparams(path, queryItems, acqTimeRE):
