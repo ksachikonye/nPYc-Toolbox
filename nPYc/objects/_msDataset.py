@@ -239,7 +239,6 @@ class MSDataset(Dataset):
 
 		return rsd(self._intensityData[mask & self.sampleMask])
 
-
 	def applyMasks(self):
 		"""
 		Permanently delete elements masked (those set to ``False``) in :py:attr:`~Dataset.sampleMask` and :py:attr:`~Dataset.featureMask`, from :py:attr:`~Dataset.featureMetadata`, :py:attr:`~Dataset.sampleMetadata`, and :py:attr:`~Dataset.intensityData`.
@@ -263,8 +262,7 @@ class MSDataset(Dataset):
 		# Reset correlations
 		del self.correlationToDilution
 
-
-	def updateMasks(self, filterSamples=True, filterFeatures=True, 
+	def updateMasks(self, filterSamples=True, filterFeatures=True,
 					sampleTypes=list(SampleType), assayRoles=list(AssayRole),
 					featureFilters={'rsdFilter':True, 'correlationToDilutionFilter':True, 'varianceRatioFilter':True, 'artifactualFilter': False,
 									'blankFilter':False}, **kwargs):
@@ -298,7 +296,6 @@ class MSDataset(Dataset):
 		:param blankThreshold: Mask features thats median intesity falls below *blankThreshold x the level in the blank*. If ``False`` do not filter, if ``None`` use the cutoff from *Attributes['blankThreshold']*, otherwise us the cutoff scaling factor provided
 		:type blankThreshold: None, False, or float
 		"""
-
 		if any([type(x) is not bool for x in featureFilters.values()]):
 			raise TypeError('Only bool values should be passed in featureFilters')
 
@@ -839,36 +836,45 @@ class MSDataset(Dataset):
 
 		self.Attributes['Log'].append([datetime.now(), 'Metaboscape dataset loaded from %s' % (path)])
 
-
-	def _getSampleMetadataFromRawData(self, rawDataPath):
+	def _getSampleMetadataFromRawData(self, rawDataPath, format='.mzML'):
 		"""
-		Pull metadata out of raw experiment files.
+		Pull metadata out of raw experiment files. This method will override previously existing information.
 		"""
 		# Validate inputs
-		if not os.path.isdir(rawDataPath):
-			raise ValueError('No directory found at %s' % (rawDataPath))
+		if type(rawDataPath) == list:
+			for subDir in rawDataPath:
+				if ~os.path.isdir(subDir):
+					raise ValueError('No directory found at %s' % (subDir))
+		else:
+			if not os.path.isdir(rawDataPath):
+				raise ValueError('No directory found at %s' % (rawDataPath))
+			rawDataPath = list(rawDataPath)
+
+		# Add a speed up check here - DO NOT read unecessary files when traversing .raw directories.
+		# Infer data format here - for now assume Waters RAW.
+		instrumentParams = [getSampleMetadataFromWatersRawFiles(x) for x in rawDataPath]
+		instrumentParams = pandas.concat(instrumentParams)
 
 		# Store the location
+		# Appending is supported to allow reading from multiple folders and directories
 		self.Attributes['Raw Data Path'] = rawDataPath
-
-		# Infer data format here - for now assume Waters RAW.
-		instrumentParams = getSampleMetadataFromWatersRawFiles(rawDataPath)
 
 		# Merge back into sampleMetadata
 		# Check if we already have these columns in sampleMetadata, if not, merge, if so, use combine_first to patch
-		if not 'Acquired Time' in self.sampleMetadata.columns:
-			self.sampleMetadata = pandas.merge(self.sampleMetadata, instrumentParams, left_on='Sample File Name', right_on='Sample File Name', how='left', sort=False)
-			self.Attributes['Log'].append([datetime.now(), 'Acquisition metadata added from raw data at: %s' % (rawDataPath)])
 
-		else:
-			# Delete the items not currenty in self.sampleMetadata
-			instrumentParams = instrumentParams[instrumentParams['Sample File Name'].isin(self.sampleMetadata['Sample File Name'])]
-			# Create an empty template
-			sampleMetadata = pandas.DataFrame(self.sampleMetadata['Sample File Name'], columns=['Sample File Name'])
-
-			instrumentParams = pandas.merge(sampleMetadata, instrumentParams, left_on='Sample File Name', right_on='Sample File Name', how='left', sort=False)
-			self.sampleMetadata = self.sampleMetadata.combine_first(instrumentParams)
-			self.Attributes['Log'].append([datetime.now(), 'Additional acquisition metadata added from raw data at: %s' % (rawDataPath)])
+		# This condition will now ALWAYS be FALSE as these columns are part of the core dataset.
+		#if not 'Acquired Time' in self.sampleMetadata.columns:
+	#		self.sampleMetadata = pandas.merge(self.sampleMetadata, instrumentParams, left_on='Sample File Name', right_on='Sample File Name', how='left', sort=False)
+	#		self.Attributes['Log'].append([datetime.now(), 'Acquisition metadata added from raw data at: %s' % (rawDataPath)])
+		#else:
+		# Delete the items not currenty in self.sampleMetadata
+		# This won't be necessary after modifying function above
+		instrumentParams = instrumentParams[instrumentParams['Sample File Name'].isin(self.sampleMetadata['Sample File Name'])]
+		# Create an empty template
+		sampleMetadata = pandas.DataFrame(self.sampleMetadata['Sample File Name'], columns=['Sample File Name'])
+		instrumentParams = pandas.merge(sampleMetadata, instrumentParams, left_on='Sample File Name', right_on='Sample File Name', how='left', sort=False)
+		self.sampleMetadata = self.sampleMetadata.combine_first(instrumentParams)
+		self.Attributes['Log'].append([datetime.now(), 'Additional acquisition metadata added from raw data at: %s' % (rawDataPath)])
 
 		# Generate the integer run order.
 		# Explicity convert datetime format
@@ -880,31 +886,16 @@ class MSDataset(Dataset):
 		# Add batch information automatically
 		self.sampleMetadata = inferBatches(self.sampleMetadata)
 
-		# Flag samples for exclusion:
-		if 'Exclusion Details' not in self.sampleMetadata:
-			self.sampleMetadata['Exclusion Details'] = None
-
 		# Flag samples with missing instrument parameters
 		headerNull = self.sampleMetadata.loc[self.sampleMetadata['Measurement Date'].isnull(), 'Sample File Name'].values
 		externNull = self.sampleMetadata.loc[self.sampleMetadata['Backing'].isnull(), 'Sample File Name'].values
+		missingRawExclusions = headerNull.append(externNull)
 
-		# Output sample names to screen, for user checking
-		# Exclude samples from subsequent processing
-		if(headerNull.shape[0] != 0):
-			print('\n_HEADER.txt file (raw data folder) missing for:')
-			for i in headerNull:
-				print(i)
-			self.excludeSamples(headerNull, message='unable to load _HEADER.txt file')
+		if len(missingRawExclusions) > 0:
+			print('\n Metadata could not be extracted from some of the raw files. '
+				  'See the sampleMetadata \'Warnings\' field for more information')
 
-		if(externNull.shape[0] != 0):
-			print('\n_extern.inf file (raw data folder) missing for:')
-			for i in externNull:
-				print(i)
-			self.excludeSamples(externNull, message='unable to load _extern.inf file')
-
-		if((headerNull.shape[0] != 0) | (externNull.shape[0] != 0)):
-			print('\n****** Please check and correct before continuing - these samples will be automatically marked for exclusion from subsequent processing ******\n')
-
+		self.excludeSamples(missingRawExclusions.unique(), message='unable to load metadata from raw file')
 
 	def _getSampleMetadataFrommzML(self, mzMLPath):
 		"""
