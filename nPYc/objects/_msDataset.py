@@ -23,6 +23,7 @@ from ..utilities import removeTrailingColumnNumbering
 from ..utilities._filters import blankFilter
 from ..utilities.normalisation._normaliserABC import Normaliser
 from ..utilities.normalisation._nullNormaliser import NullNormaliser
+from ..utilities.ms import inferBatches
 
 
 class MSDataset(Dataset):
@@ -53,7 +54,7 @@ class MSDataset(Dataset):
 		self._correlationToDilution = numpy.array(None)
 		try:
 			self.Attributes['artifactualFilter'] = (self.Attributes['artifactualFilter'] == 'True')
-		except:
+		except BaseException:
 			pass
 		self._tempArtifactualLinkageMatrix = pandas.DataFrame(None)
 		self._artifactualLinkageMatrix = pandas.DataFrame(None)
@@ -120,10 +121,15 @@ class MSDataset(Dataset):
 		self.featureMetadata[['rsdSP', 'rsdSS/rsdSP', 'correlationToDilution', 'blankValue']] \
 			= pandas.DataFrame([[numpy.nan, numpy.nan, numpy.nan, numpy.nan]], index=self.featureMetadata.index)
 
+		# Initialise broad defaults for any dataset. These are expected to be overwritten by addSample Info.
+		self.sampleMetadata['Run order'] = self.sampleMetadata.ix
+		self.sampleMetadata['Acquired Time'] = numpy.nan
+		self.sampleMetadata['Batch'] = 1
+		self.sampleMetadata['Correction Batch'] = 1
+
 		self.initialiseMasks()
 
 		self.Attributes['Log'].append([datetime.now(), '%s instance inited, with %d samples, %d features, from \%s\'' % (self.__class__.__name__, self.noSamples, self.noFeatures, datapath)])
-
 
 	# When making a deepcopy, all artifactual linkage are reset
 	def __deepcopy__(self, memo):
@@ -140,7 +146,6 @@ class MSDataset(Dataset):
 		result._artifactualLinkageMatrix = pandas.DataFrame(None)
 
 		return(result)
-
 
 	# Lazily calculate expensive operations
 	@property
@@ -179,11 +184,9 @@ class MSDataset(Dataset):
 
 		return self._correlationToDilution
 
-
 	@correlationToDilution.deleter
 	def correlationToDilution(self):
 		self._correlationToDilution = numpy.array(None)
-
 
 	@property
 	def artifactualLinkageMatrix(self):
@@ -193,12 +196,10 @@ class MSDataset(Dataset):
 
 		return self._artifactualLinkageMatrix
 
-
 	@artifactualLinkageMatrix.deleter
 	def artifactualLinkageMatrix(self):
 		self._artifactualLinkageMatrix = pandas.DataFrame(None)
 		self._tempArtifactualLinkageMatrix = pandas.DataFrame(None)
-
 
 	@property
 	def rsdSP(self):
@@ -219,7 +220,6 @@ class MSDataset(Dataset):
 
 		return rsd(self._intensityData[mask & self.sampleMask])
 
-
 	@property
 	def rsdSS(self):
 		"""
@@ -238,7 +238,7 @@ class MSDataset(Dataset):
 								 self.sampleMetadata['SampleType'].values == SampleType.StudySample)
 
 		return rsd(self._intensityData[mask & self.sampleMask])
-    
+
 
 	def applyMasks(self):
 		"""
@@ -442,12 +442,7 @@ class MSDataset(Dataset):
 				self.updateArtifactualLinkageMatrix()
 				featureMask = self.artifactualFilter(featMask=featureMask)
 
-			# under development
-			#if aggregateRedundantFeatures:
-				#pass
-
 			self.featureMask = featureMask
-
 
 		# Sample Exclusions
 		if filterSamples:
@@ -468,22 +463,6 @@ class MSDataset(Dataset):
 																																							varianceRatio,
 																																							', '.join("{!s}={!r}".format(key,val) for (key,val) in kwargs.items()))])
 
-
-	def saveFeatureMask(self):
-		"""
-		Updates featureMask and saves as 'Passing Selection' in self.featureMetadata
-		"""
- 
-		# Updates featureMask       
-		self.updateMasks(filterSamples=False, filterFeatures=True)
-        
-		# Save featureMask as 'Passing Selection' column in self.featureMetadata
-		self.featureMetadata['Passing Selection'] = self.featureMask
-
-		# Reset featureMask
-		self.initialiseMasks()
-        
-        
 	def addSampleInfo(self, descriptionFormat=None, filePath=None, filenameSpec=None, **kwargs):
 		"""
 		Load additional metadata and map it in to the :py:attr:`~Dataset.sampleMetadata` table.
@@ -497,7 +476,6 @@ class MSDataset(Dataset):
 		* **'ISATAB'** ISATAB study designs
 		* **'Filenames'** Parses sample information out of the filenames, based on the named capture groups in the regex passed in *filenamespec*
 		* **'Basic CSV'** Joins the :py:attr:`sampleMetadata` table with the data in the ``csv`` file at *filePath=*, matching on the 'Sample File Name' column in both.
-		* **'Batches'** Interpolate batch numbers for samples between those with defined batch numbers based on sample acquisitions times
 
 		:param str descriptionFormat: Format of metadata to be added
 		:param str filePath: Path to the additional data to be added
@@ -512,8 +490,8 @@ class MSDataset(Dataset):
 			self._getSampleMetadataFromFilename(filenameSpec)
 		elif descriptionFormat == '.mzML':
 			self._getSampleMetadataFromRawData()
-		elif descriptionFormat == 'Batches':
-			self._fillBatches()
+		elif descriptionFormat == 'raw':
+			self._getSampleMetadataFromRawData()
 		else:
 			super().addSampleInfo(descriptionFormat=descriptionFormat, filePath=filePath, filenameSpec=filenameSpec, **kwargs)
 
@@ -899,6 +877,9 @@ class MSDataset(Dataset):
 		self.sampleMetadata['Run Order'] = self.sampleMetadata.sort_values(by='Order').index
 		self.sampleMetadata.drop('Order', axis=1, inplace=True)
 
+		# Add batch information automatically
+		self.sampleMetadata = inferBatches(self.sampleMetadata)
+
 		# Flag samples for exclusion:
 		if 'Exclusion Details' not in self.sampleMetadata:
 			self.sampleMetadata['Exclusion Details'] = None
@@ -967,6 +948,9 @@ class MSDataset(Dataset):
 		# Flag samples for exclusion:
 		if 'Exclusion Details' not in self.sampleMetadata:
 			self.sampleMetadata['Exclusion Details'] = None
+
+		# Add batch information automatically
+		self.sampleMetadata = inferBatches(self.sampleMetadata)
 
 		# Flag samples with missing instrument parameters
 		startTimeStampNull = self.sampleMetadata.loc[self.sampleMetadata['Acquired Time'].isnull(), 'Sample File Name'].values
@@ -1073,84 +1057,6 @@ class MSDataset(Dataset):
 		self.sampleMetadata['Exclusion Details'] = ''
 		self.sampleMetadata['Metadata Available'] = True
 		self.Attributes['Log'].append([datetime.now(), 'Sample metadata parsed from filenames.'])
-
-	def _fillBatches(self):
-		"""
-		Use acquisition times to infer batch info
-		"""
-
-		# We canot infer batches unless we have run
-		if 'Acquired Date' not in self.sampleMetadata.columns:
-			warnings.warn('Unable to infer batches without Acquired Date, skipping.')
-		elif 'Acquired Time' not in self.sampleMetadata.columns:
-			warnings.warn('Unable to infer batches without Acquired Time, skipping.')
-
-		elif 'Run Order' not in self.sampleMetadata.columns:
-			warnings.warn('Unable to infer batches without Acquired Time, skipping.')
-
-		elif self.sampleMetadata['Run Order'].isnull().all():
-			warnings.warn('Unable to infer batches without run order, skipping.')
-		else:
-			currentBatch = 0
-			# Loop over samples in run order
-
-			acquiredDates = self.sampleMetadata.sort_values(by='Run Order')['Acquired Date']
-
-			# Don't include the dilution series or blanks
-			if not ((row['AssayRole'] == AssayRole.LinearityReference) or (row['SampleType'] == SampleType.ProceduralBlank)):
-				self.sampleMetadata.loc[index, 'Batch'] = currentBatch
-				self.sampleMetadata.loc[index, 'Correction Batch'] = currentBatch
-				contiguousDilution = False
-
-
-	def _fillBatchesNPC(self):
-		"""
-		Use sample names and acquisition times to infer batch info
-		"""
-
-		batchRE = r"""
-			B
-			(?P<observebatch>\d+?)
-			(?P<startend>[SE])
-			(?P<sequence>\d+?)
-			_SR
-			(?:_(?P<extraInjections>\d+?|\w+?))?
-			$
-			"""
-		batchRE = re.compile(batchRE,re.VERBOSE)
-		# We canot infer batches unless we have runorder
-		if 'Run Order' not in self.sampleMetadata.columns:
-			warnings.warn('Unable to infer batches without run order, skipping.')
-		elif self.sampleMetadata['Run Order'].isnull().all():
-			warnings.warn('Unable to infer batches without run order, skipping.')
-		else:
-			self.__corrExclusions = None
-			currentBatch = 0
-			dilutionSeries = 0
-			contiguousDilution = False
-			# Loop over samples in run order
-			for index, row in self.sampleMetadata.sort_values(by='Run Order').iterrows():
-				nameComponents = batchRE.search(row['Sample File Name'])
-				if nameComponents:
-					# Batch start
-					if nameComponents.group('startend') == 'S':
-						# New batch - increment batch no
-						if nameComponents.group('sequence') == '1':
-							currentBatch = currentBatch + 1
-
-				# Don't include the dilution series or blanks
-				if not ((row['AssayRole'] == AssayRole.LinearityReference) or (row['SampleType'] == SampleType.ProceduralBlank)):
-					self.sampleMetadata.loc[index, 'Batch'] = currentBatch
-					self.sampleMetadata.loc[index, 'Correction Batch'] = currentBatch
-					contiguousDilution = False
-
-				elif row['AssayRole'] == AssayRole.LinearityReference and row['SampleType'] != SampleType.ProceduralBlank:
-					if not contiguousDilution:
-						dilutionSeries += 1
-						contiguousDilution = True
-
-					self.sampleMetadata.loc[index, 'Dilution Series'] = dilutionSeries
-
 
 	def amendBatches(self, sampleRunOrder):
 		"""
