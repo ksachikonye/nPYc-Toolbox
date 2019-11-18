@@ -17,7 +17,7 @@ from .._toolboxPath import toolboxPath
 from ._dataset import Dataset
 from ..utilities import rsd
 from ..utilities._internal import _vcorrcoef
-from ..utilities._getMetadataFromWatersRaw import getSampleMetadataFromWatersRawFiles
+from ..utilities.extractParams import extractParams
 from ..enumerations import VariableType, DatasetLevel, AssayRole, SampleType
 from ..utilities import removeTrailingColumnNumbering
 from ..utilities._filters import blankFilter
@@ -486,12 +486,11 @@ class MSDataset(Dataset):
 				filenameSpec = self.Attributes['filenameSpec']
 			self._getSampleMetadataFromFilename(filenameSpec)
 		elif descriptionFormat == '.mzML':
-			self._getSampleMetadataFromRawData()
+			self._getSampleMetadataFromRawData(filePath, format='.mzML')
 		elif descriptionFormat == 'raw':
-			self._getSampleMetadataFromRawData()
+			self._getSampleMetadataFromRawData(filePath, format='.raw')
 		else:
 			super().addSampleInfo(descriptionFormat=descriptionFormat, filePath=filePath, filenameSpec=filenameSpec, **kwargs)
-
 
 	def _loadQIDataset(self, path):
 
@@ -852,7 +851,10 @@ class MSDataset(Dataset):
 
 		# Add a speed up check here - DO NOT read unecessary files when traversing .raw directories.
 		# Infer data format here - for now assume Waters RAW.
-		instrumentParams = [getSampleMetadataFromWatersRawFiles(x) for x in rawDataPath]
+		# Mark which files need to be parsed, to avoid parsing raw data files which do not correspond to samples in the
+		# dataset.
+		whichFiles = self.sampleMetadata['Sample File Name'].values
+		instrumentParams = [extractParams(x, format, whichFiles) for x in rawDataPath]
 		instrumentParams = pandas.concat(instrumentParams)
 
 		# Store the location
@@ -897,61 +899,8 @@ class MSDataset(Dataset):
 
 		self.excludeSamples(missingRawExclusions.unique(), message='unable to load metadata from raw file')
 
-	def _getSampleMetadataFrommzML(self, mzMLPath):
-		"""
-		Pull metadata out of mzML experiment files.
-		"""
-		# Validate inputs
-		if not os.path.isdir(mzMLPath):
-			raise ValueError('No directory found at %s' % (mzMLPath))
-
-		# Store the location
-		self.Attributes['Raw Data Path'] = mzMLPath
-
-		# Infer data format here - for now assume Waters RAW.
-		#instrumentParams = ge(mzMLPath)
-
-		instrumentParams = extractParams(mzMLPath, '.mzML')
-
-		# Merge back into sampleMetadata
-		# Check if we already have these columns in sampleMetadata, if not, merge, if so, use combine_first to patch
-		if not 'Acquired Time' in self.sampleMetadata.columns:
-			self.sampleMetadata = pandas.merge(self.sampleMetadata, instrumentParams, left_on='Sample File Name', right_on='Sample File Name', how='left', sort=False)
-			self.Attributes['Log'].append([datetime.now(), 'Acquisition metadata added from raw data at: %s' % (mzMLPath)])
-
-		else:
-			# Delete the items not currenty in self.sampleMetadata
-			instrumentParams = instrumentParams[instrumentParams['Sample File Name'].isin(self.sampleMetadata['Sample File Name'])]
-			# Create an empty template
-			sampleMetadata = pandas.DataFrame(self.sampleMetadata['Sample File Name'], columns=['Sample File Name'])
-
-			instrumentParams = pandas.merge(sampleMetadata, instrumentParams, left_on='Sample File Name', right_on='Sample File Name', how='left', sort=False)
-			self.sampleMetadata = self.sampleMetadata.combine_first(instrumentParams)
-			self.Attributes['Log'].append([datetime.now(), 'Additional acquisition metadata added from raw data at: %s' % (mzMLPath)])
-
-		# Generate the integer run order.
-		# Explicity convert datetime format
-		self.sampleMetadata['Acquired Time'] = self.sampleMetadata['Acquired Time'].dt.to_pydatetime()
-		self.sampleMetadata['Order'] = self.sampleMetadata.sort_values(by='Acquired Time').index
-		self.sampleMetadata['Run Order'] = self.sampleMetadata.sort_values(by='Order').index
-		self.sampleMetadata.drop('Order', axis=1, inplace=True)
-
-		# Flag samples for exclusion:
-		if 'Exclusion Details' not in self.sampleMetadata:
-			self.sampleMetadata['Exclusion Details'] = None
-
-		# Add batch information automatically
-		self.sampleMetadata = inferBatches(self.sampleMetadata)
-
 		# Flag samples with missing instrument parameters
 		startTimeStampNull = self.sampleMetadata.loc[self.sampleMetadata['Acquired Time'].isnull(), 'Sample File Name'].values
-
-		if(startTimeStampNull.shape[0] != 0):
-			print('\n\"startTimeStamp\" missing for:')
-			for i in startTimeStampNull:
-				print(i)
-			self.excludeSamples(startTimeStampNull, message='startTimeStamp not found in .mzML')
-
 
 	def _getSampleMetadataFromFilename(self, filenameSpec):
 		"""

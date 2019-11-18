@@ -2,17 +2,17 @@
 :py:mod:`~nPYc.utilities.extractParams` contains several utility functions to read analytical parameters from raw data files.
 """
 
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
 import re
 import logging
 import os
 import codecs
 import pandas
 import warnings
+from xml.etree import ElementTree as ET
 from ._conditionalJoin import *
 
-def extractParams(filepath, filetype, pdata=1):
+
+def extractParams(filepath, filetype, pdata=1, whichFiles=None):
 	"""
 	Extract analytical parameters from raw data files for Bruker, Waters .RAW data and .mzML only.
 
@@ -21,6 +21,7 @@ def extractParams(filepath, filetype, pdata=1):
 	:param filetype: Search for this type of data
 	:type filetype: string
 	:param int pdata: pdata folder for Bruker data
+	:param list whichFiles: If a list of files is provided, only the files in it will be parsed
 	:return: Analytical parameters, indexed by file name.
 	:rtype: pandas.Dataframe
 	"""
@@ -61,6 +62,8 @@ def extractParams(filepath, filetype, pdata=1):
 		pattern = re.compile(pattern)
 		fileList = buildFileList(filepath, pattern)
 
+	if whichFiles is not None:
+		fileList = [x for x in fileList if x in whichFiles]
 
 	# iterate over the list
 	results = list()
@@ -208,7 +211,7 @@ def extractmzMLParams(filePath, queryItems):
 				logging.debug('Found Tag: ' + currentTag + ' with value: ' + tagValue)
 			else:
 				results['Warnings'] = conditionalJoin(results['Warnings'],
-			    									   'Parameter ' + currentTag + ' not found.')
+													   'Parameter ' + currentTag + ' not found.')
 				warnings.warn('Parameter ' + currentTag + ' not found in file: ' + os.path.join(currentTag))
 
 	except IOError:
@@ -216,6 +219,40 @@ def extractmzMLParams(filePath, queryItems):
 			results['Warnings'] = conditionalJoin(results['Warnings'],
 												  'Unable to open ' + filePath + ' for reading.')
 			warnings.warn('Unable to open ' + filePath + ' for reading.')
+
+	return results
+
+
+def extractmzMLParamsFast(mzMLPath, queryItems=['startTimeStamp']):
+	"""
+	Faster version to extract tags from mzML. This version ignores the mzML structure
+	and reads in chunks of lines which are then parsed directly with regex.
+	:param mzMLPath: Path to the mzML file to be parsed.
+	:param queryItems: list of fields to extract. These will be compiled into regex which search for values surrounded by
+	queryItem=" and ".
+	:return:
+	"""
+	# Get filename
+	filename = os.path.basename(mzMLPath)
+	results = dict()
+	results['Warnings'] = ''
+
+	results['File Path'] = mzMLPath
+	results['Sample File Name'] = filename[:-4]
+	preparedRegex = [re.compile('(?<=' + x + '=")(.*?)(?=")') for x in queryItems]
+	try:
+		with open(mzMLPath, 'r') as xml_file:
+			for line in xml_file:
+				for idx, currRegex in enumerate(preparedRegex):
+					if currRegex.search(line):
+						results[queryItems[idx]] = currRegex.search(line)
+						del preparedRegex[idx]
+				if len(preparedRegex) == 0:
+					break
+	except IOError:
+			results['Warnings'] = conditionalJoin(results['Warnings'],
+												  'Unable to open ' + mzMLPath + ' for reading.')
+			warnings.warn('Unable to open ' + mzMLPath + ' for reading.')
 
 	return results
 
