@@ -73,7 +73,7 @@ def extractParams(filepath, filetype, pdata=1, whichFiles=None):
 		elif filetype == 'Waters .raw':
 			results.append(extractWatersRAWParams(filename, queryItems))
 		elif filetype == '.mzML':
-			results.append(extractmzMLParams(filename, queryItems))
+			results.append(extractmzMLParamsFast(filename, queryItems))
 
 	resultsDF = pandas.DataFrame(results)
 	resultsDF = resultsDF.apply(lambda x: pandas.to_numeric(x, errors='ignore'))
@@ -230,7 +230,8 @@ def extractmzMLParamsFast(mzMLPath, queryItems=['startTimeStamp']):
 	:param mzMLPath: Path to the mzML file to be parsed.
 	:param queryItems: list of fields to extract. These will be compiled into regex which search for values surrounded by
 	queryItem=" and ".
-	:return:
+	:returns: Dictionary of extracted parameters
+	:rtype: dict
 	"""
 	# Get filename
 	filename = os.path.basename(mzMLPath)
