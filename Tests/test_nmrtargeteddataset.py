@@ -7520,7 +7520,7 @@ class test_targeteddataset_import_undefined(unittest.TestCase):
 	"""
 
     def setUp(self):
-        self.targetedData = nPYc.TargetedDataset('', fileType='empty')
+        self.targetedData = nPYc.NMRTargetedDataset('', fileType='empty')
 
     def test_targeteddataset_import_raise_notimplemented(self):
         self.assertRaises(NotImplementedError, nPYc.NMRTargetedDataset, os.path.join('nopath'), fileType=None)
