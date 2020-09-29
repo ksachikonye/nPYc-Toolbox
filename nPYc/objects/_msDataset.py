@@ -122,7 +122,7 @@ class MSDataset(Dataset):
 			= pandas.DataFrame([[numpy.nan, numpy.nan, numpy.nan, numpy.nan]], index=self.featureMetadata.index)
 
 		# Initialise broad defaults for any dataset. These are expected to be overwritten by addSample Info.
-		self.sampleMetadata['Run order'] = self.sampleMetadata.ix
+		self.sampleMetadata['Run order'] = self.sampleMetadata.index
 		self.sampleMetadata['Acquired Time'] = numpy.nan
 		self.sampleMetadata['Batch'] = 1
 		self.sampleMetadata['Correction Batch'] = 1
