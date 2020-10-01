@@ -480,9 +480,9 @@ class MSDataset(Dataset):
 		:type filenameSpec: None or str
 		:raises NotImplementedError: if the descriptionFormat is not understood
 		"""
-
 		if descriptionFormat == 'Filenames':
-			if filenameSpec is None: # Use spec from SOP
+			# Use spec from SOP
+			if filenameSpec is None:
 				filenameSpec = self.Attributes['filenameSpec']
 			self._getSampleMetadataFromFilename(filenameSpec)
 		elif descriptionFormat == '.mzML':
@@ -503,7 +503,7 @@ class MSDataset(Dataset):
 
 		# Now read for real
 		dataT = pandas.read_csv(path, header=2)
-		values = dataT.iloc[:,endIndex+1:endIndex+dataSize+1]
+		values = dataT.iloc[:, endIndex+1:endIndex+dataSize+1]
 		self._intensityData = values.values.transpose()
 
 		# Get the sample names as the only metadata we have
@@ -527,9 +527,6 @@ class MSDataset(Dataset):
 		self.featureMetadata['Peak Width'] = self.featureMetadata['Peak Width'].astype(float)
 		self.featureMetadata['Retention Time'] = self.featureMetadata['Retention Time'].astype(float)
 		self.featureMetadata['m/z'] = self.featureMetadata['m/z'].astype(float)
-
-
-		#self.initialiseMasks()
 
 		self.sampleMetadata['AssayRole'] = None#AssayRole.Assay
 		self.sampleMetadata['SampleType'] = None#SampleType.StudySample
@@ -571,12 +568,12 @@ class MSDataset(Dataset):
 			try:
 				# when variableType is one of these kinds, it is expected that variable names are considered as m/z values
 				feature_names = [str(round(x, 6)) for x in feature_names]
-			except:
+			except BaseException:
 				raise ValueError('Could not interpret column names ')
 
 		featureMetadata['Feature Name'] = feature_names
 
-		if  variableType == 'Continuum':
+		if variableType == 'Continuum':
 			featureMetadata['m/z'] = feature_names
 
 		self.featureMetadata = pandas.DataFrame(numpy.vstack([featureMetadata[c] for c in featureMetadata.keys()]).T,
@@ -591,18 +588,15 @@ class MSDataset(Dataset):
 		self.featureMetadata.drop(labels=['Feature Name'], axis=1, inplace=True)
 		self.featureMetadata.insert(0, 'Feature Name', name)
 
-		self.sampleMetadata['AssayRole'] = None#AssayRole.Assay
-		self.sampleMetadata['SampleType'] = None#SampleType.StudySample
+		self.sampleMetadata['AssayRole'] = None
+		self.sampleMetadata['SampleType'] = None
 		self.sampleMetadata['Dilution'] = 100
 		self.sampleMetadata['Metadata Available'] = False
-
 
 		self.sampleMetadata['Exclusion Details'] = None
 
 		fileNameAndExtension = self.sampleMetadata['Sample File Name'].apply(os.path.splitext)
 		self.sampleMetadata['Sample File Name'] = [x[0] for x in fileNameAndExtension]
-
-		#self.initialiseMasks()
 
 		self.Attributes['Log'].append([datetime.now(), 'CSV dataset loaded from %s' % (path)])
 
@@ -618,7 +612,7 @@ class MSDataset(Dataset):
 		dataSize = endIndex - startIndex
 
 		# Now read for real
-		values = dataT.iloc[:,startIndex:]
+		values = dataT.iloc[:, startIndex:]
 		self._intensityData = values.values.transpose()
 
 		# Get the sample names as the only metadata we have
@@ -639,7 +633,7 @@ class MSDataset(Dataset):
 				dataT.insert(0, 'name', feature_names)
 				# rename mz to mzmed like in diffreport
 				dataT.rename(columns={'mz': 'mzmed', 'rt': 'rtmed'}, inplace=True)
-			except:
+			except BaseException:
 				raise ValueError('XCMS data frame should be obtained with either peakTable or diffreport methods')
 
 		featureMetadata['Feature Name'] = dataT['name'].values
@@ -661,16 +655,14 @@ class MSDataset(Dataset):
 		self.featureMetadata['Retention Time'] = self.featureMetadata['Retention Time'].astype(float) / 60.0
 		self.featureMetadata['m/z'] = self.featureMetadata['m/z'].astype(float)
 
-		self.sampleMetadata['AssayRole'] = None#AssayRole.Assay
-		self.sampleMetadata['SampleType'] = None#SampleType.StudySample
+		self.sampleMetadata['AssayRole'] = None
+		self.sampleMetadata['SampleType'] = None
 		self.sampleMetadata['Dilution'] = 100
 		self.sampleMetadata['Metadata Available'] = False
 		self.sampleMetadata['Exclusion Details'] = None
 
 		fileNameAndExtension = self.sampleMetadata['Sample File Name'].apply(os.path.splitext)
 		self.sampleMetadata['Sample File Name'] = [x[0] for x in fileNameAndExtension]
-
-		#self.initialiseMasks()
 
 		self.Attributes['Log'].append([datetime.now(), 'XCMS dataset loaded from %s' % (path)])
 
@@ -679,28 +671,23 @@ class MSDataset(Dataset):
 		# Read in data
 		dataT = pandas.read_excel(path, sheet_name=sheetName, skiprows=[0])
 
-		##
 		# Intensity matrix
-		##
 		# Find start of data
 		endIndex = len(dataT.index)
 
 		# Now read  intensities
 		self._intensityData = dataT.iloc[2:endIndex,noSampleParams+1:].values
 
-		##
 		# Feature info
-		##
 		featureMetadata = dict()
 		featureMetadata['Feature Name'] = list(dataT.columns.values)[noSampleParams+1:]
-		featureMetadata['Class'] = list(dataT.iloc[0,noSampleParams+1:].values)
-		featureMetadata['LOD (μM)'] = list(dataT.iloc[1,noSampleParams+1:].values)
+		featureMetadata['Class'] = list(dataT.iloc[0, noSampleParams+1:].values)
+		featureMetadata['LOD (μM)'] = list(dataT.iloc[1, noSampleParams+1:].values)
 
 		self.featureMetadata = pandas.DataFrame(numpy.vstack([featureMetadata[c] for c in featureMetadata.keys()]).T, columns=featureMetadata.keys())
 		self.featureMetadata['LOD (μM)'] = pandas.to_numeric(self.featureMetadata['LOD (μM)'])
-		##
+
 		# Sample info
-		##
 		self.sampleMetadata = pandas.read_excel(path, sheet_name=sheetName, skiprows=[0, 2, 3], usecols=range(noSampleParams + 1))
 
 		# If there are multiple 'LOD (calc.) ' strings we have several sheets concatenated.
@@ -739,7 +726,6 @@ class MSDataset(Dataset):
 		#self.initialiseMasks()
 
 		self.Attributes['Log'].append([datetime.now(), 'Biocrates dataset loaded from %s' % (path)])
-
 
 	def _loadMetaboscapeDataset(self, path, noFeatureParams=None, sheetName=None):
 
@@ -806,20 +792,17 @@ class MSDataset(Dataset):
 		else:
 			featureMetadata['Feature Name'] = dataT['m/z'].apply(lambda mz: str(mz) + 'm/z').values
 
-
-
 		featureMetadata = pandas.DataFrame(numpy.vstack([featureMetadata[c] for c in featureMetadata.keys()]).T, columns=featureMetadata.keys())
 		sampleMetadata = pandas.DataFrame(numpy.concatenate([sampleMetadata[c] for c in sampleMetadata.keys()], axis=0), columns=sampleMetadata.keys())
 
-		sampleMetadata['AssayRole'] = None#AssayRole.Assay
-		sampleMetadata['SampleType'] = None#SampleType.StudySample
+		sampleMetadata['AssayRole'] = None
+		sampleMetadata['SampleType'] = None
 		sampleMetadata['Dilution'] = 100
 
 		# Put Feature Names first
 		name = featureMetadata['Feature Name']
 		featureMetadata.drop(labels=['Feature Name'], axis=1, inplace=True)
 		featureMetadata.insert(0, 'Feature Name', name)
-
 
 		featureMetadata['m/z'] = featureMetadata['m/z'].astype(float)
 
@@ -830,8 +813,6 @@ class MSDataset(Dataset):
 		self._intensityData = intensityData
 		self.sampleMetadata = sampleMetadata
 		self.featureMetadata = featureMetadata
-
-		#self.initialiseMasks()
 
 		self.Attributes['Log'].append([datetime.now(), 'Metaboscape dataset loaded from %s' % (path)])
 
@@ -849,10 +830,8 @@ class MSDataset(Dataset):
 				raise ValueError('No directory found at %s' % (rawDataPath))
 			rawDataPath = list(rawDataPath)
 
-		# Add a speed up check here - DO NOT read unecessary files when traversing .raw directories.
-		# Infer data format here - for now assume Waters RAW.
-		# Mark which files need to be parsed, to avoid parsing raw data files which do not correspond to samples in the
-		# dataset.
+		# TODO Add a speed up check here - DO NOT read unecessary files when traversing .raw directories.
+		# TODO update extract params to infer data format
 		whichFiles = self.sampleMetadata['Sample File Name'].values
 		instrumentParams = [extractParams(x, format, whichFiles) for x in rawDataPath]
 		instrumentParams = pandas.concat(instrumentParams)
@@ -864,12 +843,8 @@ class MSDataset(Dataset):
 		# Merge back into sampleMetadata
 		# Check if we already have these columns in sampleMetadata, if not, merge, if so, use combine_first to patch
 
-		# This condition will now ALWAYS be FALSE as these columns are part of the core dataset.
-		#if not 'Acquired Time' in self.sampleMetadata.columns:
-	#		self.sampleMetadata = pandas.merge(self.sampleMetadata, instrumentParams, left_on='Sample File Name', right_on='Sample File Name', how='left', sort=False)
-	#		self.Attributes['Log'].append([datetime.now(), 'Acquisition metadata added from raw data at: %s' % (rawDataPath)])
-		#else:
-		# Delete the items not currenty in self.sampleMetadata
+		# TODO Remove the delete the items not currenty in self.sampleMetadata when ..raw file reading
+		#  is restricted to relevant samples
 		# This won't be necessary after modifying function above
 		instrumentParams = instrumentParams[instrumentParams['Sample File Name'].isin(self.sampleMetadata['Sample File Name'])]
 		# Create an empty template
@@ -879,8 +854,6 @@ class MSDataset(Dataset):
 		self.Attributes['Log'].append([datetime.now(), 'Additional acquisition metadata added from raw data at: %s' % (rawDataPath)])
 
 		# Generate the integer run order.
-		# Explicity convert datetime format
-		# Explicity convert datetime format
 		self.sampleMetadata['Acquired Time'] = self.sampleMetadata['Acquired Time']
 		self.sampleMetadata['Order'] = self.sampleMetadata.sort_values(by='Acquired Time').index
 		self.sampleMetadata['Run Order'] = self.sampleMetadata.sort_values(by='Order').index
@@ -888,7 +861,7 @@ class MSDataset(Dataset):
 
 		# Add batch information automatically
 		self.sampleMetadata = inferBatches(self.sampleMetadata)
-
+		# TODO refactor function to return explicit not found flags so this code works for all vendors
 		# Flag samples with missing instrument parameters
 		headerNull = self.sampleMetadata.loc[self.sampleMetadata['Measurement Date'].isnull(), 'Sample File Name'].values
 		externNull = self.sampleMetadata.loc[self.sampleMetadata['Backing'].isnull(), 'Sample File Name'].values
@@ -899,7 +872,7 @@ class MSDataset(Dataset):
 				  'See the sampleMetadata \'Warnings\' field for more information')
 
 		self.excludeSamples(missingRawExclusions.unique(), message='unable to load metadata from raw file')
-
+		# TODO check if this is necessary
 		# Flag samples with missing instrument parameters
 		startTimeStampNull = self.sampleMetadata.loc[self.sampleMetadata['Acquired Time'].isnull(), 'Sample File Name'].values
 
@@ -907,7 +880,7 @@ class MSDataset(Dataset):
 		"""
 		Infer sample acquisition metadata from standardised filename template.
 		"""
-
+		# TODO rename this and related options to PhenomeCentre File Name, as this is misleading and not generaliseable
 		# If the dilution series design is not defined in the SOP, load the defualt.
 		if not 'dilutionMap' in self.Attributes.keys():
 			dilutionMap = pandas.read_csv(os.path.join(toolboxPath(), 'StudyDesigns', 'DilutionSeries.csv'), index_col='Sample Name')
@@ -925,7 +898,7 @@ class MSDataset(Dataset):
 		fileNameParts.drop('exclusion2', axis=1, inplace=True)
 
 		# Pass masks into enum fields
-		fileNameParts.loc[:,'AssayRole'] = AssayRole.Assay
+		fileNameParts.loc[:, 'AssayRole'] = AssayRole.Assay
 		fileNameParts.loc[fileNameParts['reference'] == 'SR', 'AssayRole'] = AssayRole.PrecisionReference
 		fileNameParts.loc[fileNameParts['baseName'].str.match('.+[B]\d+?[SE]\d+?', na=False).astype(bool), 'AssayRole'] = AssayRole.PrecisionReference
 		fileNameParts.loc[fileNameParts['reference'] == 'LTR', 'AssayRole'] = AssayRole.PrecisionReference
@@ -934,7 +907,7 @@ class MSDataset(Dataset):
 		fileNameParts.loc[fileNameParts['groupingKind'].str.match('Blank', na=False).astype(bool), 'AssayRole'] = AssayRole.LinearityReference
 		fileNameParts.loc[fileNameParts['groupingKind'].str.match('E?IC', na=False).astype(bool), 'AssayRole'] = AssayRole.Assay
 
-		fileNameParts.loc[:,'SampleType'] = SampleType.StudySample
+		fileNameParts.loc[:, 'SampleType'] = SampleType.StudySample
 		fileNameParts.loc[fileNameParts['reference'] == 'SR', 'SampleType'] = SampleType.StudyPool
 		fileNameParts.loc[fileNameParts['baseName'].str.match('.+[B]\d+?[SE]\d+?', na=False).astype(bool), 'SampleType'] = SampleType.StudyPool
 		fileNameParts.loc[fileNameParts['reference'] == 'LTR', 'SampleType'] = SampleType.ExternalReference
@@ -1011,7 +984,6 @@ class MSDataset(Dataset):
 
 		self.sampleMetadata.loc[:, 'Correction Batch'] = newBatch
 
-
 	def __correlateToDilution(self, method='pearson', sampleType=SampleType.StudyPool, assayRole=AssayRole.LinearityReference, exclusions=True):
 		"""
 		Calculates correlation of feature intesities to dilution.
@@ -1075,7 +1047,6 @@ class MSDataset(Dataset):
 
 		return returnValues
 
-
 	def __generateArtifactualLinkageMatrix(self,corrOnly=False):
 		""" Identify potentially artifactual features, generate the linkage between similar features
 			input:
@@ -1105,20 +1076,20 @@ class MSDataset(Dataset):
 						pandas.DataFrames listing the matching features based overlap of peakwidth
 				"""
 				match = (abs(ds.loc[i,'Retention Time']-ds.loc[:,'Retention Time']) <= (ds.loc[i,'Peak Width']+ds.loc[:,'Peak Width'])/2) & (abs(ds.loc[i,'m/z']-ds.loc[:,'m/z']) <= deltaMZ)	 # find match
-				return( pandas.DataFrame(data = {'node1': ds.index[i], 'node2': ds.index[match], 'Peak Overlap': ((((ds.loc[i,'Peak Width']+ds.loc[match,'Peak Width'])/2)-abs(ds.loc[i,'Retention Time']-ds.loc[match,'Retention Time']))/((ds.loc[i,'Peak Width']+ds.loc[match,'Peak Width'])/2))*100 } ) )  # return the matching rows
+				return(pandas.DataFrame(data = {'node1': ds.index[i], 'node2': ds.index[match], 'Peak Overlap': ((((ds.loc[i,'Peak Width']+ds.loc[match,'Peak Width'])/2)-abs(ds.loc[i,'Retention Time']-ds.loc[match,'Retention Time']))/((ds.loc[i,'Peak Width']+ds.loc[match,'Peak Width'])/2))*100 } ) )  # return the matching rows
 
 			# get feature overlap
-			ds	  = featureMetadata[['Feature Name','Retention Time','m/z','Peak Width']]
+			ds = featureMetadata[['Feature Name','Retention Time','m/z','Peak Width']]
 			# By concatenating all the matches once, save ~22% compared to do it at each loop round
-			matches = [ get_match(i,ds,deltaMZ) for i in range(ds.shape[0]) ] # get a list of matches
-			res	 = pandas.concat(matches)
-			res	 = res.loc[ res.node1 < res.node2 ]	  # keeps feat1-feat2, removes feat1-feat1 and feat2-feat1
+			matches = [get_match(i,ds,deltaMZ) for i in range(ds.shape[0])] # get a list of matches
+			res	= pandas.concat(matches)
+			res	= res.loc[ res.node1 < res.node2 ]	  # keeps feat1-feat2, removes feat1-feat1 and feat2-feat1
 
 			#filter interactions by overlap
-			res	 = res.loc[ res.loc[:,'Peak Overlap']>=deltaOverlap, ['node1','node2'] ]
-			res.reset_index( drop=True, inplace=True )
+			res	= res.loc[res.loc[:,'Peak Overlap']>=deltaOverlap, ['node1','node2']]
+			res.reset_index(drop=True, inplace=True)
 
-			return( res )
+			return res
 		# end find_similar_peakwidth
 
 		def remove_min_corr_overlap(overlappingFeatures,intensityData,corrCutoff):
@@ -1159,11 +1130,9 @@ class MSDataset(Dataset):
 
 		return(artifactualLinkageMatrix)
 
-
 	def updateArtifactualLinkageMatrix(self):
 		self._artifactualLinkageMatrix = self.__generateArtifactualLinkageMatrix()
 		return
-
 
 	def artifactualFilter(self,featMask=None):
 		"""
@@ -1200,12 +1169,10 @@ class MSDataset(Dataset):
 
 		return(newFeatureMask)
 
-
 	def extractRTslice(msrun, target_rt):
 		pass
 
-
-	def getFuctionNo(self, spectrum):
+	def getFunctionNo(self, spectrum):
 		pass
 
 	def excludeFeatures(self, featureList, on='Feature Name', message='User Excluded'):
