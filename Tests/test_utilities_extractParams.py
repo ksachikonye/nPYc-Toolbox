@@ -2,33 +2,30 @@
 Test parameter extraction from raw data files
 """
 
-import scipy
-import pandas
-import numpy
 import sys
 import unittest
-from pandas.util.testing import assert_frame_equal
 import os
-import tempfile
-import inspect
+import re
+from nPYc.utilities.io._getMetadataFrommzML import extractmzMLParams, extractmzMLParamsRegex
+from nPYc.utilities.io._getMetadataFromBrukerNMR import extractBrukerparams
+from nPYc.utilities.io._getMetadataFromWatersRaw import extractWatersRAWParams
+from nPYc.utilities.io.extractParams import buildFileList
 
 sys.path.append("..")
-import nPYc
-
 
 """
-Check extract params is working correctly.
+Check if extract params is working correctly.
 """
+
+
 class test_utilities_extractParams(unittest.TestCase):
 
 	def setUp(self):
 		self.pathHeader = os.path.join('..', '..', 'npc-standard-project', 'Raw_Data')
 
-
 	def test_extractParams_buildFileList(self):
 
 		import re
-		from nPYc.utilities.extractParams import buildFileList
 
 		with self.subTest(msg='Waters Paths'):
 			pathHeader = os.path.join(self.pathHeader, 'ms', 'parameters_data')
@@ -129,9 +126,7 @@ class test_utilities_extractParams(unittest.TestCase):
 
 			self.assertEqual(obtained, expected)
 
-
 	def test_extractParams_extractWatersRAWParams(self):
-		from nPYc.utilities.extractParams import extractWatersRAWParams
 
 		pathHeader = os.path.join(self.pathHeader, 'ms', 'parameters_data')
 		filePath = os.path.join(pathHeader, 'UnitTest1_LPOS_ToF02_S1W12_SR.raw')
@@ -177,9 +172,7 @@ class test_utilities_extractParams(unittest.TestCase):
 
 		self.assertDictEqual(obtained, expected)
 
-
 	def test_extractParams_extractWatersRAWParams_warns(self):
-		from nPYc.utilities.extractParams import extractWatersRAWParams
 
 		pathHeader = os.path.join(self.pathHeader, 'ms', 'parameters_data')
 		filePath = os.path.join(pathHeader, 'UnitTest1_LPOS_ToF02_S1W12_SR.raw')
@@ -203,10 +196,7 @@ class test_utilities_extractParams(unittest.TestCase):
 			self.assertEqual(obtained['Warnings'][:15], 'Unable to open ')
 
 
-
 	def test_extractParams_extractBrukerparams(self):
-		import re
-		from nPYc.utilities.extractParams import extractBrukerparams
 
 		queryItems = dict()
 		queryItems[os.path.join('..', '..', 'acqus')] = ['##OWNER=', '##$PULPROG=','##$RG=', '##$SW=','##$SFO1=', '##$TD=', '##$PROBHD=',
@@ -280,10 +270,7 @@ class test_utilities_extractParams(unittest.TestCase):
 
 			self.assertDictEqual(obtained, expected)
 
-
 	def test_extractParams_extractBrukerparams_warns(self):
-		import re
-		from nPYc.utilities.extractParams import extractBrukerparams
 
 		pathHeader = os.path.join(self.pathHeader, 'nmr', 'UnitTest3', 'UnitTest3_Serum_Rack01_RCM_190116', '10')
 		filePath = os.path.join(pathHeader, 'pdata', '1', '1r')
@@ -308,3 +295,46 @@ class test_utilities_extractParams(unittest.TestCase):
 				obtained = extractBrukerparams(filePath, queryItems, acqTimeRE)
 
 			self.assertEqual(obtained['Warnings'][:15], 'Unable to open ')
+
+	def test_extractParams_extractmzMLParams(self):
+
+		pathHeader = os.path.join(self.pathHeader, 'ms', 'parameters_data')
+		filePath = os.path.join(pathHeader, 'UnitTest_RPOS_ToF10_U1W72_SR.mzML')
+
+		queryItems = ["startTimeStamp"]
+
+		expected = {"Warnings": '',
+					'File Path': filePath,
+					"Sample File Name": 'UnitTest_RPOS_ToF10_U1W72_SR',
+					"startTimeStamp": "2018-01-19T08:35:33Z"}
+
+		with self.subTest(msg='.XML Parser'):
+			obtained = extractmzMLParams(filePath, queryItems)
+
+			self.assertDictEqual(obtained, expected)
+
+		with self.subTest(msg='Regex parser'):
+			obtained = extractmzMLParamsRegex(filePath, queryItems)
+
+			self.assertDictEqual(obtained, expected)
+
+	def test_extractParams_extractmzMLParams_warns(self):
+
+		pathHeader = os.path.join(self.pathHeader, 'ms', 'parameters_data')
+		filePath = os.path.join(pathHeader, 'UnitTest_RPOS_ToF10_U1W72_SR.mzML')
+
+		with self.subTest(msg='Missing parameter'):
+			queryItems = ['Unknown param']
+
+			with self.assertWarnsRegex(UserWarning, 'Parameter Unknown param not found in file: '):
+				obtained = extractmzMLParamsRegex(filePath, queryItems)
+
+			self.assertEqual(obtained['Warnings'], 'Parameter Unknown param not found.')
+
+		with self.subTest(msg='Missing parameter .xml parser'):
+			queryItems = ['Unknown param']
+
+			with self.assertWarnsRegex(UserWarning, 'Parameter Unknown param not found in file: '):
+				obtained = extractmzMLParams(filePath, queryItems)
+
+			self.assertEqual(obtained['Warnings'], 'Parameter Unknown param not found.')

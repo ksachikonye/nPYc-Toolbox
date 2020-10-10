@@ -4,7 +4,7 @@ The :py:mod:`~nPYc.utilities` module provides convenience functions for working 
 
 from .ms import *
 from .generic import *
-from .extractParams import extractParams, buildFileList
+from nPYc.utilities.io.extractParams import extractParams, buildFileList
 from .normalisation import *
 from ._buildSpectrumFromQIfeature import buildMassSpectrumFromQIfeature
 from ._massSpectrumBuilder import massSpectrumBuilder

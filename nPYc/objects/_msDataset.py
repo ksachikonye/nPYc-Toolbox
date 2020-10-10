@@ -10,19 +10,15 @@ import re
 import warnings
 import numbers
 from datetime import datetime
-import logging
 import copy
 import networkx
 from .._toolboxPath import toolboxPath
 from ._dataset import Dataset
 from ..utilities import rsd
 from ..utilities._internal import _vcorrcoef
-from ..utilities.extractParams import extractParams
-from ..enumerations import VariableType, DatasetLevel, AssayRole, SampleType
-from ..utilities import removeTrailingColumnNumbering
+from nPYc.utilities.io.extractParams import extractParams
+from ..enumerations import VariableType, AssayRole, SampleType
 from ..utilities._filters import blankFilter
-from ..utilities.normalisation._normaliserABC import Normaliser
-from ..utilities.normalisation._nullNormaliser import NullNormaliser
 from ..utilities.ms import inferBatches
 
 

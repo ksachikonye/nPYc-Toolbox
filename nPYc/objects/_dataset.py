@@ -1,4 +1,3 @@
-import scipy
 import numpy
 import pandas
 import os
@@ -6,8 +5,7 @@ import isatools.isatab as isatab
 import json
 import inspect
 import re
-from ..enumerations import VariableType, DatasetLevel, SampleType, AssayRole
-from ..utilities.generic import removeDuplicateColumns
+from ..enumerations import VariableType, SampleType, AssayRole
 from .._toolboxPath import toolboxPath
 from datetime import datetime
 import copy
@@ -950,8 +948,7 @@ class Dataset:
 		:type sopPath: string
 		"""
 		import json
-		from collections import ChainMap
-		from ..utilities.extractParams import buildFileList
+		from nPYc.utilities.io.extractParams import buildFileList
 		import re
 
 		# Always load some generic values

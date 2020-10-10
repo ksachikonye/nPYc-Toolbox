@@ -8,7 +8,6 @@ import re
 from datetime import datetime
 import numpy
 import pandas
-import collections
 import warnings
 from .._toolboxPath import toolboxPath
 from ._dataset import Dataset
@@ -1074,7 +1073,7 @@ class TargetedDataset(Dataset):
         :return: None
         """
         from ..utilities._readBrukerXML import importBrukerXML
-        from ..utilities.extractParams import buildFileList
+        from nPYc.utilities.io.extractParams import buildFileList
 
         if fileNamePattern is None:
             fileNamePattern = self.Attributes['fileNamePattern']
